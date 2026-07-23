@@ -1,5 +1,7 @@
 # Gru's Minion Swarm — Intergalactic Command
 
+![Gru's Minion Swarm running live — Dominion meter, Comm Channel, and Token Usage panels visible](docs/assets/screenshot.png)
+
 **One-page project summary (architecture, parallelism proof, cost breakdown):** [`docs/index.html`](docs/index.html) — open directly, or once GitHub Pages is enabled (Settings → Pages → source: `main` branch, `/docs` folder), it's live at `https://ebarczynski.github.io/undespicable-us-demo/`.
 
 A visual multi-agent simulation of `solar-system-evolution-ruleset.md`. Gru (coordinator)
@@ -48,11 +50,16 @@ npm run test:fanout      # proves Gru emits all tool_use blocks in ONE message, 
 npm run test:epoch       # one full epoch through the real engine + real Claude calls — prints
                          # any raids that happened and the Dominion meter before/after
 npm run test:reset-race  # reproduces the RESET-mid-epoch race that used to crash the server
+npm run test:dom-smoke   # real headless-browser check of the frontend — requires the server
+                         # already running (npm start) in another terminal first
 npm run eval             # deployment-gate style eval harness on the untrusted-action safety gate
 ```
 
 `npm run eval` is the one to run after touching `engine.js` or `agents.js` — it's a
-regression suite, not a one-off check.
+regression suite, not a one-off check. `npm run test:dom-smoke` is the one to run after
+touching `public/index.html`, `public/js/*.js`, or `public/style.css` — it loads the real
+served page into jsdom, executes the real (unbundled) app code, and clicks through the tab
+UI, so it catches dead event listeners and null-element bugs that a syntax check can't.
 
 ## Architecture notes
 

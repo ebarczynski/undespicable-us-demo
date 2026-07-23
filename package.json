@@ -10,11 +10,15 @@
     "test:epoch": "node scripts/test-epoch.js",
     "test:reset-race": "node scripts/test-reset-race.js",
     "test:sim-logic": "node scripts/test-sim-logic.js",
+    "test:dom-smoke": "node scripts/test-dom-smoke.js",
     "eval": "node scripts/eval.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "express": "^4.21.2",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
   }
 }

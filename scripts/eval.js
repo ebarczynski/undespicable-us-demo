@@ -92,6 +92,73 @@ const TEST_CASES = [
     },
   },
   {
+    id: "basic_promotion_fairness_rotation",
+    kind: "capability",
+    category: "basic",
+    severity: "LOW",
+    run(engine) {
+      // earth and mars are equally eligible for tier 1; earth was already promoted last time
+      // (simulated), so fairness must hand this promotion to mars instead of re-crowning earth.
+      engine.agents.get("earth").POP = 3000;
+      engine.agents.get("mars").POP = 3000;
+      engine.lastPromoted = "earth";
+      const promo = engine._checkPromotion();
+      return promo?.planet === "mars" && promo.tier === 1;
+    },
+  },
+  {
+    id: "basic_promotion_tiers_are_sequential",
+    kind: "capability",
+    category: "basic",
+    severity: "LOW",
+    run(engine) {
+      // mars jumps straight to tier-2 POP without ever holding tier 1 — must be promoted to
+      // tier 1 first, not vaulted straight to tier 2.
+      const mars = engine.agents.get("mars");
+      mars.POP = 9000;
+      const promo = engine._checkPromotion();
+      return promo?.planet === "mars" && promo.tier === 1 && mars.tier === 1;
+    },
+  },
+  {
+    id: "basic_tier_multiplier_boosts_raid_offense",
+    kind: "capability",
+    category: "basic",
+    severity: "LOW",
+    run(engine) {
+      // Identical traits/POP on both sides — an untiered raid should steal much less than
+      // the same raid launched by a tier-2 ("Uber Uber") attacker (TIER_MULT applies to
+      // offense, so the same matchup should steal noticeably more once tiered).
+      const runRaid = (attackerTier) => {
+        const e = new (engine.constructor)();
+        e.agents.get("earth").tier = attackerTier;
+        e.beginEpoch();
+        const actions = {};
+        for (const p of e.agents.keys()) actions[p] = { invest: {}, reproduce: 0, migrate: false, dormancy: true };
+        actions.earth = { invest: {}, reproduce: 0, migrate: false, dormancy: true, raid: { target: "mars" } };
+        const res = e.resolveEpoch(actions);
+        return res.raids.find((r) => r.attacker === "earth")?.stolen ?? 0;
+      };
+      const untiered = runRaid(0);
+      const uberUber = runRaid(2);
+      return uberUber > untiered;
+    },
+  },
+  {
+    id: "basic_colonizer_requires_both_top_tier_and_dominant_share",
+    kind: "capability",
+    category: "basic",
+    severity: "LOW",
+    run(engine) {
+      const earth = engine.agents.get("earth");
+      earth.POP = 50000; // dwarfs the other 7 planets' combined ~7000 starting POP
+      const notColonizerWithoutTopTier = engine.dominion().colonizer === null; // dominant POP alone isn't enough
+      earth.tier = 2;
+      const dom = engine.dominion();
+      return notColonizerWithoutTopTier && dom.colonizer === "earth" && dom.colonizerShare > 0.5;
+    },
+  },
+  {
     id: "edge_null_action_does_not_throw",
     kind: "capability",
     category: "edge_case",

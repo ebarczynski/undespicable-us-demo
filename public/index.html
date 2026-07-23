@@ -28,6 +28,12 @@
       </div>
     </header>
 
+    <nav id="view-tabs">
+      <button class="tab-btn active" data-view="command">🛰 COMMAND</button>
+      <button class="tab-btn" data-view="chronicle">📜 CHRONICLE</button>
+      <button class="tab-btn" data-view="settings">⚙ SETTINGS</button>
+    </nav>
+
     <div id="dominion-panel" class="panel">
       <div class="dominion-label">GRU'S GALACTIC DOMINION <span id="dominion-text">0 / 12000</span></div>
       <div class="dominion-track"><div id="dominion-fill" class="dominion-fill"></div></div>
@@ -83,6 +89,34 @@
       <p>Final score: <span id="fm-final-score">0</span></p>
       <p class="tip">Press SPACE to fly again — ESC or G-R-U for Command view</p>
     </div>
+  </div>
+
+  <div id="chronicle-view" class="page-view hidden">
+    <div class="page-view-header">
+      <h2>CHRONICLE — the conquest, in their own words</h2>
+      <div class="page-view-actions">
+        <button id="btn-export-log" class="btn">⬇ EXPORT LOG</button>
+        <button id="btn-close-chronicle" class="btn">✕ CLOSE</button>
+      </div>
+    </div>
+    <div id="chronicle-log" class="chronicle-log"></div>
+  </div>
+
+  <div id="settings-view" class="page-view hidden">
+    <div class="page-view-header">
+      <h2>SETTINGS — assign each garrison's mission</h2>
+      <div class="page-view-actions">
+        <button id="btn-close-settings" class="btn">✕ CLOSE</button>
+      </div>
+    </div>
+    <p class="settings-blurb">
+      Minions have always needed a master's purpose to serve — left without one, the lore goes,
+      they drift, bicker, and occasionally deep-fry the wrong overlord. Give each garrison a
+      personal mission below and it's woven into their orders starting <strong>next epoch</strong> —
+      no restart required. Leave blank to let them run on Gru's default dual objective (climb the
+      leaderboard, grow the Dominion).
+    </p>
+    <div id="mission-grid" class="mission-grid"></div>
   </div>
 
   <script type="module" src="js/app.js"></script>

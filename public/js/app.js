@@ -22,17 +22,46 @@ document.getElementById("btn-step").onclick = () => socket.send({ type: "step" }
 document.getElementById("btn-speed").onclick = () => socket.send({ type: "cycleSpeed" });
 document.getElementById("btn-reset").onclick = () => socket.send({ type: "reset" });
 
+// ---- Tab navigation: Command / Chronicle / Settings — the sim keeps running
+// server-side underneath regardless of which tab is showing. ----
+const tabButtons = document.querySelectorAll(".tab-btn");
+const chronicleView = document.getElementById("chronicle-view");
+const settingsView = document.getElementById("settings-view");
+
+function setView(view) {
+  chronicleView.classList.toggle("hidden", view !== "chronicle");
+  settingsView.classList.toggle("hidden", view !== "settings");
+  tabButtons.forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+}
+function currentView() {
+  if (!chronicleView.classList.contains("hidden")) return "chronicle";
+  if (!settingsView.classList.contains("hidden")) return "settings";
+  return "command";
+}
+tabButtons.forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
+document.getElementById("btn-close-chronicle").onclick = () => setView("command");
+document.getElementById("btn-close-settings").onclick = () => setView("command");
+document.getElementById("btn-export-log").onclick = () => sim.exportLog();
+
+// ---- per-planet mission inputs (live — applied starting next epoch, no restart) ----
+sim.buildMissionGrid((planet, mission) => socket.send({ type: "setMission", planet, mission }));
+
 // ---- Fun Mode key-combo toggle: type G, R, U in sequence (Escape also exits) ----
 let combo = "";
 window.addEventListener("keydown", (e) => {
-  if (!e.repeat && /^[a-z]$/i.test(e.key)) {
+  const typingInField = e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA";
+
+  if (!typingInField && !e.repeat && /^[a-z]$/i.test(e.key)) {
     combo = (combo + e.key.toLowerCase()).slice(-3);
     if (combo === "gru") {
       combo = "";
       toggleFunMode();
     }
   }
-  if (e.code === "Escape" && fun.active) toggleFunMode(false);
+  if (e.code === "Escape") {
+    if (fun.active) toggleFunMode(false);
+    else if (currentView() !== "command") setView("command");
+  }
 
   if (fun.active) {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
@@ -45,8 +74,12 @@ window.addEventListener("keyup", (e) => {
 
 function toggleFunMode(forceOn) {
   const goActive = forceOn !== undefined ? forceOn : !fun.active;
-  if (goActive) fun.activate();
-  else fun.deactivate();
+  if (goActive) {
+    setView("command");
+    fun.activate();
+  } else {
+    fun.deactivate();
+  }
 }
 
 // ---- drag a Minion ship to reposition it (Command view only) ----

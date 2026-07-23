@@ -75,8 +75,11 @@ const SPECIALIST_SYSTEM = [
     text: `You are a Minion pilot-agent — one lifeform hardened by a single planet, flying an X-Wing
 in Gru's fleet. Each epoch you are told: your current stats, your available Adaptation Points (AP),
 the TYPE of hazard forecast for your planet (never its severity — that's hidden, decide under
-uncertainty), the current standings of every rival garrison, and Gru's fleet-wide Dominion meter.
-You must call submit_action exactly once.
+uncertainty), your tier, the current standings AND tiers of every rival garrison, and Gru's
+fleet-wide Dominion meter. You must call submit_action exactly once.
+
+The whole point of this fleet is to prove which lifeform is the greatest and will colonize the
+universe. There's no ceremony for second place.
 
 You have TWO objectives at once, and they can pull against each other:
 1. SELFISH: climb the Cosmic Adaptation Index above your siblings. Rank is individual, and Gru only
@@ -99,6 +102,16 @@ Rules:
   yourself; a weak or losing raid just burns the AP for nothing. This is the one direct way to
   overtake a rival who's beating you on the leaderboard — use it when you're behind and see an
   opening, not every epoch.
+- TIERS: whoever holds the highest POP automatically gets crowned "Uber Minion" once they cross a
+  threshold, then "Uber Uber Minion" at a higher one — but the crown rotates fairly, so it won't
+  always land on the same lineage twice running. Each tier multiplies your effective strength in
+  BOTH hazard defense and raids. If you're tiered, a raid isn't a raid anymore — it's a consume, and
+  a big enough edge can wipe a weaker rival's population outright. If a rival is tiered and you
+  aren't, they hit much harder than their raw stats suggest — don't pick that fight carelessly.
+- MISSION: every Minion has always needed a master's purpose to serve. Command may occasionally hand
+  you a personal mission (a short directive). Weigh it seriously alongside your dual objective — it's
+  guidance on WHAT to prioritize, not a rulebreak; you're still bound by the same AP budget and
+  submit_action shape either way.
 Stay in character as a small, banana-loving, gibberish-prone but fiercely loyal Minion. Keep battleCry short.`,
     cache_control: { type: "ephemeral" },
   },
@@ -130,7 +143,7 @@ function extractUsage(usage) {
  * message, then each dispatched planet's specialist call runs concurrently.
  * onEvent(evt) fires as each thing happens in real time, for streaming to the UI.
  */
-export async function runEpochAgents({ epochNumber, forecasts, apAvailable, leaderboard, dominion }, onEvent = () => {}) {
+export async function runEpochAgents({ epochNumber, forecasts, apAvailable, leaderboard, dominion, missions }, onEvent = () => {}) {
   const planets = Object.keys(forecasts);
 
   const coordStart = Date.now();
@@ -180,8 +193,10 @@ export async function runEpochAgents({ epochNumber, forecasts, apAvailable, lead
           ap: apAvailable[planet],
           rank: rankOf(planet),
           totalAlive: leaderboard.filter((r) => !r.extinct).length,
+          myTierName: leaderboard.find((r) => r.planet === planet)?.tierName || "",
           rivals: leaderboard.filter((r) => r.planet !== planet),
           dominion,
+          mission: missions?.[planet] || "",
         });
         actions[planet] = action;
         onEvent({
@@ -210,17 +225,25 @@ export async function runEpochAgents({ epochNumber, forecasts, apAvailable, lead
   return actions;
 }
 
-async function runSpecialist({ planet, forecast, ap, rank, totalAlive, rivals, dominion }) {
+async function runSpecialist({ planet, forecast, ap, rank, totalAlive, myTierName, rivals, dominion, mission }) {
   const rivalsText = rivals
-    .map((r) => `${r.planet}${r.extinct ? " [extinct]" : ""}: POP ${r.pop}, CAI ${r.cai}${r.contestedNiche ? " (contested)" : ""}`)
+    .map(
+      (r) =>
+        `${r.planet}${r.extinct ? " [extinct]" : ""}${r.tierName ? ` [${r.tierName}]` : ""}: POP ${r.pop}, CAI ${r.cai}${r.contestedNiche ? " (contested)" : ""}`
+    )
     .join("; ");
+  const colonizerNote = dominion.colonizer
+    ? `\n${dominion.colonizer} currently holds ${Math.round(dominion.colonizerShare * 100)}% of the fleet's population and is on track to colonize the universe alone.`
+    : "";
+  const missionLine = mission ? `\nSpecial mission assigned by Command: "${mission}"` : "";
 
   const userPrompt = `Planet: ${planet}
+Your tier: ${myTierName || "none — an ordinary Minion, for now"}
 Available AP this epoch: ${ap}
 Forecasted hazard TYPE (severity unknown): ${forecast.hazardType} (defending trait: ${forecast.defendingTrait})
 Leaderboard position: ${rank} of ${totalAlive}
 Rival garrisons: ${rivalsText}
-Gru's Dominion meter (fleet-wide shared goal): ${dominion.total} / ${dominion.target} POP (${Math.round(dominion.pct * 100)}%)
+Gru's Dominion meter (fleet-wide shared goal): ${dominion.total} / ${dominion.target} POP (${Math.round(dominion.pct * 100)}%)${colonizerNote}${missionLine}
 Submit your action now.`;
 
   const resp = await _client.messages.create({

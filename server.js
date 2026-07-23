@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadEnv, ROOT_DIR } from "./lib/env.js";
-import { SolarSystemEngine } from "./engine.js";
+import { SolarSystemEngine, PLANETS } from "./engine.js";
 import { initAgents, runEpochAgents } from "./agents.js";
 import { emptyUsage, addUsage, sumUsage, usageBreakdown } from "./lib/usage.js";
 
@@ -37,6 +37,11 @@ let generation = 0; // bumped on reset — lets an in-flight epoch detect its en
 
 // Token usage/cost — persists across resets (a reset restarts the sim, not the bill).
 const usage = { coordinator: emptyUsage(), specialists: emptyUsage() };
+
+// Per-planet mission override, live-editable from the Settings tab. Read fresh every epoch —
+// no restart needed, and it persists across resets like usage does (it's an operator setting,
+// not sim state).
+const missions = Object.fromEntries(PLANETS.map((p) => [p.name, ""]));
 function usageSnapshot() {
   return {
     coordinator: usageBreakdown(usage.coordinator),
@@ -80,7 +85,7 @@ async function runOneEpoch() {
     const forecast = activeEngine.beginEpoch();
     guardedBroadcast({ type: "epoch_forecast", ...forecast });
 
-    const actions = await runEpochAgents(forecast, guardedBroadcast);
+    const actions = await runEpochAgents({ ...forecast, missions }, guardedBroadcast);
 
     if (myGen !== generation) return; // discarded by a reset while agents were dispatching
 
@@ -110,6 +115,7 @@ wss.on("connection", (ws) => {
       running,
       speed: SPEED_LEVELS[speedIndex].label,
       usage: usageSnapshot(),
+      missions,
       ...engine.snapshot(),
     })
   );
@@ -135,6 +141,15 @@ wss.on("connection", (ws) => {
     } else if (msg.type === "cycleSpeed") {
       speedIndex = (speedIndex + 1) % SPEED_LEVELS.length;
       broadcast({ type: "sim_state", running, speed: SPEED_LEVELS[speedIndex].label });
+    } else if (msg.type === "setMission") {
+      const planet = String(msg.planet || "").toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(missions, planet)) {
+        missions[planet] = String(msg.mission || "")
+          .replace(/[\r\n]+/g, " ")
+          .slice(0, 200)
+          .trim();
+        broadcast({ type: "missions_update", missions });
+      }
     } else if (msg.type === "reset") {
       running = false;
       generation += 1;
@@ -144,6 +159,7 @@ wss.on("connection", (ws) => {
         running,
         speed: SPEED_LEVELS[speedIndex].label,
         usage: usageSnapshot(),
+        missions,
         ...engine.snapshot(),
       });
     }

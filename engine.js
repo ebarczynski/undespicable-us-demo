@@ -108,6 +108,16 @@ const MIGRATE_COST = 2;
 const RAID_COST = 3; // AP cost to raid a rival planet this epoch
 const DOMINION_TARGET = 12000; // display anchor for the shared fleet-wide goal — not a win condition
 
+// Prestige tiers — the escalating "prove what lifeform is greatest" payoff. Checked every
+// epoch against current POP (not a one-time crossing), highest tier first, one promotion per
+// epoch. Tier is a permanent rank (never revoked by a later POP dip) and multiplies effective
+// trait strength everywhere combat/hazard math reads a trait — an Uber Minion is just flatly
+// stronger, in defense and in a raid ("consume", once tiered).
+const TIER_NAMES = ["", "Uber Minion", "Uber Uber Minion"];
+const TIER_THRESHOLDS = [2500, 6000]; // POP required to be eligible for tier 1, tier 2
+const TIER_MULT = [1, 1.6, 3];
+const COLONIZER_SHARE = 0.5; // fleet-POP share needed, at max tier, to be declared the dominant lifeform
+
 function weightedPick(table) {
   const r = Math.random();
   let acc = 0;
@@ -148,10 +158,12 @@ export class SolarSystemEngine {
           bottleneckEpochsLeft: 0,
           colonizationScore: 0,
           extinct: false,
+          tier: 0,
           invasiveClones: [], // { sourcePlanet, pop, traits }
         },
       ])
     );
+    this.lastPromoted = null; // fairness rotation — see _checkPromotion()
   }
 
   epochMultiplier(epochNumber = this.epochNumber) {
@@ -193,7 +205,43 @@ export class SolarSystemEngine {
   /** Gru's shared fleet-wide goal — the cooperative half of the dual objective (§ competition addendum). */
   dominion() {
     const total = round2([...this.agents.values()].reduce((s, a) => s + a.POP, 0));
-    return { total, target: DOMINION_TARGET, pct: round2(clamp01(total / DOMINION_TARGET)) };
+    const alive = [...this.agents.values()].filter((a) => !a.extinct);
+    const leader = alive.reduce((best, a) => (!best || a.POP > best.POP ? a : best), null);
+    const leaderShare = leader && total > 0 ? leader.POP / total : 0;
+    // The colonization payoff: one lifeform, at the top tier, holding most of the fleet's
+    // population, proving itself the greatest and set to colonize the universe.
+    const colonizer =
+      leader && leader.tier >= TIER_THRESHOLDS.length && leaderShare >= COLONIZER_SHARE ? leader.name : null;
+    return {
+      total,
+      target: DOMINION_TARGET,
+      pct: round2(clamp01(total / DOMINION_TARGET)),
+      colonizer,
+      colonizerShare: colonizer ? round2(leaderShare) : 0,
+    };
+  }
+
+  /**
+   * Checked every epoch against current POP (not a one-time crossing). Highest tier first,
+   * at most one promotion per epoch. Fairness: skip whoever was promoted last if anyone else
+   * qualifies, so the crown rotates instead of pinning to one lineage — others get their own
+   * shot before the strongest inevitably starts consuming them.
+   */
+  _checkPromotion() {
+    for (let tier = TIER_THRESHOLDS.length; tier >= 1; tier--) {
+      const threshold = TIER_THRESHOLDS[tier - 1];
+      // Sequential rank: must hold tier-1 exactly (not just "any lower tier") to be promoted —
+      // a POP spike can't vault a planet straight to Uber Uber without holding Uber first.
+      const eligible = [...this.agents.values()]
+        .filter((a) => !a.extinct && a.tier === tier - 1 && a.POP >= threshold)
+        .sort((a, b) => b.POP - a.POP);
+      if (!eligible.length) continue;
+      const chosen = eligible.find((a) => a.name !== this.lastPromoted) || eligible[0];
+      chosen.tier = tier;
+      this.lastPromoted = chosen.name;
+      return { planet: chosen.name, tier, tierName: TIER_NAMES[tier], pop: round2(chosen.POP) };
+    }
+    return null;
   }
 
   /** Safety-gate: never trust the LLM's arithmetic. Clamp to a legal action inside the AP budget. */
@@ -273,10 +321,14 @@ export class SolarSystemEngine {
       sanitized.set(agent.name, { apBudget, action: this.sanitizeAction(agent, actionsByPlanet[agent.name], apBudget) });
     }
 
+    // Tier multiplies effective STR/MOB for combat — an Uber Minion hits harder AND is
+    // tougher to raid (a raid by a tiered attacker is framed as a "consume").
     const preEpochOffense = new Map(
-      [...this.agents.entries()].map(([name, a]) => [name, (a.traits.STR + a.traits.MOB) / 2])
+      [...this.agents.entries()].map(([name, a]) => [name, ((a.traits.STR + a.traits.MOB) / 2) * TIER_MULT[a.tier]])
     );
-    const preEpochDefense = new Map([...this.agents.entries()].map(([name, a]) => [name, a.traits.STR]));
+    const preEpochDefense = new Map(
+      [...this.agents.entries()].map(([name, a]) => [name, a.traits.STR * TIER_MULT[a.tier]])
+    );
 
     const raids = [];
     for (const [name, { action }] of sanitized.entries()) {
@@ -291,7 +343,13 @@ export class SolarSystemEngine {
       const stolen = round2(defender.POP * stolenFrac);
       defender.POP = Math.max(0, defender.POP - stolen);
       attacker.POP += stolen;
-      raids.push({ attacker: name, defender: action.raidTarget, stolen, success: stolen > 0 });
+      raids.push({
+        attacker: name,
+        defender: action.raidTarget,
+        stolen,
+        success: stolen > 0,
+        consume: attacker.tier > 0, // an Uber Minion doesn't raid, it consumes
+      });
     }
 
     for (const agent of this.agents.values()) {
@@ -307,7 +365,7 @@ export class SolarSystemEngine {
 
       // Resolution phase.
       const { hazard, severity } = roll;
-      let effectiveTraitValue = agent.traits[hazard.trait];
+      let effectiveTraitValue = agent.traits[hazard.trait] * TIER_MULT[agent.tier];
       if (agent.bottleneckEpochsLeft > 0) effectiveTraitValue *= 0.5;
       const effectiveDefense = effectiveTraitValue + (action.migrate ? MIGRATE_COST : 0);
       const hazardScore = severity.mult * multiplier;
@@ -356,6 +414,7 @@ export class SolarSystemEngine {
         popDelta: round2(popDelta),
         pop: round2(agent.POP),
         traits: roundTraits(agent.traits),
+        tier: agent.tier,
         reinforced,
         bottleneckTriggered,
         bottleneckActive: agent.bottleneckEpochsLeft > 0,
@@ -366,6 +425,7 @@ export class SolarSystemEngine {
 
     const panspermia = this._rollPanspermia();
     this._settleInvasiveClones();
+    const promotion = this._checkPromotion();
     const leaderboard = this.leaderboard();
 
     return {
@@ -374,6 +434,7 @@ export class SolarSystemEngine {
       results,
       panspermia,
       raids,
+      promotion,
       leaderboard,
       dominion: this.dominion(),
     };
@@ -408,6 +469,7 @@ export class SolarSystemEngine {
       dest.extinct = false;
       dest.POP = fragmentPop * 0.5;
       dest.traits = scaleTraits(source.traits, 0.5);
+      dest.tier = 0; // a revived lineage restarts from the bottom, even if it died as an Uber
       revived = true;
     } else {
       dest.invasiveClones.push({ sourcePlanet: source.name, pop: fragmentPop, traits: { ...source.traits } });
@@ -459,6 +521,8 @@ export class SolarSystemEngine {
         extinct: agent.extinct,
         bottleneckActive: agent.bottleneckEpochsLeft > 0,
         contestedNiche: !!agent.contestedNiche,
+        tier: agent.tier,
+        tierName: TIER_NAMES[agent.tier],
       };
     });
     rows.sort((a, b) => b.cai - a.cai);

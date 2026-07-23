@@ -45,6 +45,32 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// Population can compound into astronomical figures over a long run (a genuine outcome of
+// the ruleset's uncapped trait growth, not a display bug) — format it so it stays readable
+// instead of dumping raw scientific notation (e.g. "2.2853894327468602e+34") on screen.
+const BIG_NUMBER_UNITS = [
+  { v: 1e33, s: "Dc" },
+  { v: 1e30, s: "No" },
+  { v: 1e27, s: "Oc" },
+  { v: 1e24, s: "Sp" },
+  { v: 1e21, s: "Sx" },
+  { v: 1e18, s: "Qi" },
+  { v: 1e15, s: "Qa" },
+  { v: 1e12, s: "T" },
+  { v: 1e9, s: "B" },
+  { v: 1e6, s: "M" },
+  { v: 1e3, s: "K" },
+];
+function formatBigNumber(n) {
+  n = Number(n) || 0;
+  const abs = Math.abs(n);
+  if (abs < 1000) return Math.round(n).toString();
+  for (const u of BIG_NUMBER_UNITS) {
+    if (abs >= u.v) return (n / u.v).toFixed(2) + u.s;
+  }
+  return n.toExponential(2);
+}
+
 export class SwarmSim {
   constructor(canvas) {
     this.canvas = canvas;
@@ -63,6 +89,7 @@ export class SwarmSim {
           maxPopEver: 1000,
           traits: {},
           extinct: false,
+          tier: 0,
           bottleneckActive: false,
           contestedNiche: false,
           thinking: false,
@@ -78,11 +105,13 @@ export class SwarmSim {
     this.running = false;
     this.gruFireUntil = 0;
 
-    this.log = [];
+    this.log = []; // structured history — backs the compact sidebar, the Chronicle tab, and export
     this.logEl = document.getElementById("log");
+    this.chronicleEl = document.getElementById("chronicle-log");
     this.leaderboardEl = document.querySelector("#leaderboard tbody");
     this.dominionText = document.getElementById("dominion-text");
     this.dominionFill = document.getElementById("dominion-fill");
+    this.missionCallback = null;
 
     this.gruImg = new Image();
     this.gruImgLoaded = false;
@@ -111,14 +140,75 @@ export class SwarmSim {
   }
 
   addLog(html) {
-    this.log.push(html);
-    if (this.log.length > 150) this.log.shift();
+    const entry = { epoch: this.epochNumber, at: Date.now(), html };
+    this.log.push(entry);
+    if (this.log.length > 800) this.log.shift();
+    this._appendEntry(this.logEl, entry, 150);
+    this._appendEntry(this.chronicleEl, entry, 800);
+  }
+
+  _appendEntry(el, entry, cap) {
+    if (!el) return;
     const div = document.createElement("div");
     div.className = "entry";
-    div.innerHTML = html;
-    this.logEl.appendChild(div);
-    while (this.logEl.children.length > 150) this.logEl.removeChild(this.logEl.firstChild);
-    this.logEl.scrollTop = this.logEl.scrollHeight;
+    div.innerHTML = `<span class="entry-epoch">E${entry.epoch}</span> ${entry.html}`;
+    el.appendChild(div);
+    while (el.children.length > cap) el.removeChild(el.firstChild);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  exportLog() {
+    const lines = this.log.map((e) => {
+      const plain = e.html.replace(/<[^>]+>/g, "");
+      return `[Epoch ${e.epoch}] ${new Date(e.at).toLocaleTimeString()} — ${plain}`;
+    });
+    const header = `GRU'S MINION SWARM — event log — exported ${new Date().toLocaleString()}\n${"=".repeat(60)}\n\n`;
+    const blob = new Blob([header + lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `minion-swarm-log-epoch-${this.epochNumber}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // Builds the Settings tab's per-planet mission inputs once and wires live-apply on change.
+  buildMissionGrid(onChange) {
+    this.missionCallback = onChange;
+    const grid = document.getElementById("mission-grid");
+    if (!grid || grid.dataset.built) return;
+    grid.dataset.built = "1";
+    for (const planet of PLANET_ORDER) {
+      const row = document.createElement("div");
+      row.className = "mission-row";
+      row.innerHTML = `
+        <label for="mission-${planet}">${planet}</label>
+        <input id="mission-${planet}" type="text" maxlength="200" placeholder="e.g. Prove ${planet} deserves the crown above all others" />
+        <span class="mission-saved" id="mission-saved-${planet}">✓</span>
+      `;
+      grid.appendChild(row);
+      const input = row.querySelector("input");
+      const saved = row.querySelector(".mission-saved");
+      const commit = () => {
+        onChange?.(planet, input.value.trim());
+        saved.classList.add("show");
+        setTimeout(() => saved.classList.remove("show"), 1200);
+      };
+      input.addEventListener("change", commit);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") input.blur(); // triggers change
+      });
+    }
+  }
+
+  updateMissions(missions) {
+    if (!missions) return;
+    for (const [planet, text] of Object.entries(missions)) {
+      const input = document.getElementById(`mission-${planet}`);
+      if (input && document.activeElement !== input) input.value = text || "";
+    }
   }
 
   addEffect(effect) {
@@ -136,9 +226,18 @@ export class SwarmSim {
   updateDominion(dominion) {
     if (!dominion) return;
     const prevPct = this.dominion ? this.dominion.pct : dominion.pct;
+    const wasColonizer = this.dominion ? this.dominion.colonizer : null;
     this.dominion = dominion;
-    if (this.dominionText) this.dominionText.textContent = `${Math.round(dominion.total)} / ${dominion.target} POP`;
+    if (this.dominionText) {
+      this.dominionText.textContent = `${formatBigNumber(dominion.total)} / ${formatBigNumber(dominion.target)} POP`;
+    }
     if (this.dominionFill) this.dominionFill.style.width = `${Math.round(dominion.pct * 100)}%`;
+
+    if (dominion.colonizer && dominion.colonizer !== wasColonizer) {
+      this.addLog(
+        `<span class="tag-gru">🌌 COLONIZATION</span> <strong>${dominion.colonizer}</strong> now holds ${Math.round(dominion.colonizerShare * 100)}% of the fleet — on track to prove itself and colonize the universe alone.`
+      );
+    }
 
     // Dominion isn't just a number — real growth (or a real setback) rattles the
     // galaxy and the fleet visibly spreads out to hold more territory (layoutPositions
@@ -167,7 +266,7 @@ export class SwarmSim {
     });
 
     // Gru's portrait (public/assets/gru.png) — tall cutout, aspect ratio fixed to source.
-    const headTop = 78; // just under the topbar
+    const headTop = 106; // just under the topbar + view-tabs row
     const gruH = Math.max(160, Math.min(w, h) * 0.38);
     const gruW = gruH * GRU_ASPECT;
     const gruDrawX = cx - gruW / 2;
@@ -231,16 +330,22 @@ export class SwarmSim {
           ship.maxPopEver = Math.max(ship.maxPopEver, a.POP);
           ship.traits = a.traits;
           ship.extinct = a.extinct;
+          ship.tier = a.tier || 0;
           ship.bottleneckActive = a.bottleneckEpochsLeft > 0;
         }
         this.renderLeaderboard(msg.leaderboard || []);
         this.updateDominion(msg.dominion);
         this.updateUsage(msg.usage);
+        this.updateMissions(msg.missions);
         this.updateSimStateButtons(msg.speed);
         break;
       }
       case "usage_update": {
         this.updateUsage(msg);
+        break;
+      }
+      case "missions_update": {
+        this.updateMissions(msg.missions);
         break;
       }
       case "sim_state": {
@@ -271,7 +376,7 @@ export class SwarmSim {
           const ship = this.ships.get(d.planet);
           if (!ship) continue;
           ship.thinking = true;
-          this.setLabel(ship, d.orderText, "#c9b6ff", 4200);
+          this.setLabel(ship, d.orderText, "#c9b6ff", 5000);
           this.addEffect({ type: "dispatch_beam", planet: d.planet, duration: 550 });
         }
         break;
@@ -283,7 +388,8 @@ export class SwarmSim {
         if (ship) {
           ship.thinking = false;
           const raidNote = msg.action.raid ? `  ⚔→${msg.action.raid.target}` : "";
-          this.setLabel(ship, msg.action.battleCry + raidNote, "#ffd400", 4200);
+          // battle cries are the funniest part of watching this run — give them real airtime
+          this.setLabel(ship, msg.action.battleCry + raidNote, "#ffd400", 9000);
         }
         this.addEffect({ type: "response_beam", planet: msg.planet, duration: 550 });
         const raidLog = msg.action.raid ? ` <span class="tag-raid">[targeting raid on ${msg.action.raid.target}]</span>` : "";
@@ -303,6 +409,7 @@ export class SwarmSim {
           this.applyResolution(planet, r);
         }
         for (const raid of msg.raids || []) this.applyRaid(raid);
+        if (msg.promotion) this.applyPromotion(msg.promotion);
         this.renderLeaderboard(msg.leaderboard);
         this.updateDominion(msg.dominion);
         if (msg.panspermia) {
@@ -328,23 +435,36 @@ export class SwarmSim {
   applyRaid(raid) {
     const attacker = this.ships.get(raid.attacker);
     const defender = this.ships.get(raid.defender);
-    this.addEffect({ type: "raid_beam", from: raid.attacker, to: raid.defender, duration: 650 });
+    const verb = raid.consume ? "CONSUME" : "RAID";
+    this.addEffect({ type: "raid_beam", from: raid.attacker, to: raid.defender, duration: 650, consume: raid.consume });
     if (raid.success && raid.stolen > 0) {
       if (attacker) {
         attacker.flash = { color: "#ff9d3b", until: performance.now() + 550 };
-        this.setLabel(attacker, `+${Math.round(raid.stolen)} POP RAID!`, "#ff9d3b", 3500);
+        this.setLabel(attacker, `+${formatBigNumber(raid.stolen)} POP ${verb}!`, "#ff9d3b", 3500);
       }
       if (defender) {
         defender.flash = { color: "#ff3b4a", until: performance.now() + 550 };
-        this.setLabel(defender, `-${Math.round(raid.stolen)} POP RAIDED`, "#ff3b4a", 3500);
+        this.setLabel(defender, `-${formatBigNumber(raid.stolen)} POP ${raid.consume ? "CONSUMED" : "RAIDED"}`, "#ff3b4a", 3500);
       }
-      this.triggerShake(2.5, 220);
+      this.triggerShake(raid.consume ? 4.5 : 2.5, raid.consume ? 320 : 220);
       this.addLog(
-        `<span class="tag-raid">⚔ RAID</span> ${raid.attacker} strikes ${raid.defender} — steals ${Math.round(raid.stolen)} POP`
+        `<span class="tag-raid">⚔ ${verb}</span> ${raid.attacker} strikes ${raid.defender} — steals ${formatBigNumber(raid.stolen)} POP`
       );
     } else {
-      this.addLog(`<span class="tag-raid">⚔ RAID</span> ${raid.attacker} attacks ${raid.defender} — repelled, AP wasted`);
+      this.addLog(`<span class="tag-raid">⚔ ${verb}</span> ${raid.attacker} attacks ${raid.defender} — repelled, AP wasted`);
     }
+  }
+
+  applyPromotion(promo) {
+    const ship = this.ships.get(promo.planet);
+    if (!ship) return;
+    ship.tier = promo.tier;
+    this.addEffect({ type: "promotion_burst", planet: promo.planet, duration: 1400 });
+    this.setLabel(ship, `👑 ${promo.tierName.toUpperCase()}!`, "#ffd400", 5000);
+    this.triggerShake(7, 500);
+    this.addLog(
+      `<span class="tag-gru">👑 PROMOTION</span> ${promo.planet} rises to <strong>${escapeHtml(promo.tierName)}</strong> at ${formatBigNumber(promo.pop)} POP`
+    );
   }
 
   applyResolution(planet, r) {
@@ -354,6 +474,7 @@ export class SwarmSim {
     ship.pop = r.pop;
     ship.maxPopEver = Math.max(ship.maxPopEver, r.pop);
     ship.traits = r.traits;
+    ship.tier = r.tier || 0;
     ship.bottleneckActive = r.bottleneckActive;
 
     if (r.extinct) {
@@ -376,7 +497,7 @@ export class SwarmSim {
       this.addLog(`<span class="tag-bad">⚠ ${planet}</span> bottleneck — population crashed below 250`);
     }
     this.addLog(
-      `<span class="${r.outcome >= 0 ? "tag-ok" : "tag-bad"}">${planet}</span> ${r.hazardType} (${r.severity}) → outcome ${r.outcome >= 0 ? "+" : ""}${r.outcome}, POP ${r.pop}`
+      `<span class="${r.outcome >= 0 ? "tag-ok" : "tag-bad"}">${planet}</span> ${r.hazardType} (${r.severity}) → outcome ${r.outcome >= 0 ? "+" : ""}${r.outcome}, POP ${formatBigNumber(r.pop)}`
     );
   }
 
@@ -386,9 +507,10 @@ export class SwarmSim {
     rows.forEach((r, i) => {
       const tr = document.createElement("tr");
       tr.className = (r.extinct ? "extinct " : "") + (i === 0 ? "rank-1" : "");
+      const badge = r.tier === 2 ? '<span class="tier-badge tier-2" title="Uber Uber Minion">★★</span>' : r.tier === 1 ? '<span class="tier-badge tier-1" title="Uber Minion">★</span>' : "";
       tr.innerHTML = `
         <td>${i + 1}</td>
-        <td class="planet-name">${r.planet}</td>
+        <td class="planet-name">${badge}${r.planet}</td>
         <td><span class="cai-bar-track"><span class="cai-bar-fill" style="width:${(r.cai / maxCai) * 100}%"></span></span></td>
         <td>${r.cai.toFixed(2)}</td>
         <td class="${r.contestedNiche ? "contested" : ""}">${r.contestedNiche ? "⚔" : ""}</td>
@@ -425,6 +547,7 @@ export class SwarmSim {
     for (const c of this.comets) this.drawComet(ctx, c);
 
     this.drawGruShip(ctx, now);
+    this.drawColonizerBanner(ctx, now);
 
     this.maybeAmbientChatter(now);
 
@@ -552,10 +675,31 @@ export class SwarmSim {
     ctx.restore();
   }
 
+  drawColonizerBanner(ctx, now) {
+    if (!this.dominion?.colonizer) return;
+    const { x: gx, y: gy, w: gw, h: gh } = this.gruDraw;
+    const cx = gx + gw / 2;
+    const y = gy + gh + 40;
+    const pulse = 0.6 + 0.4 * Math.sin(now * 0.006);
+    ctx.save();
+    ctx.font = "bold 13px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = `rgba(255,157,59,${0.75 + pulse * 0.25})`;
+    ctx.shadowColor = "#ff9d3b";
+    ctx.shadowBlur = 10 + pulse * 8;
+    ctx.fillText(
+      `🌌 ${this.dominion.colonizer.toUpperCase()} IS COLONIZING THE UNIVERSE — ${Math.round(this.dominion.colonizerShare * 100)}%`,
+      cx,
+      y
+    );
+    ctx.restore();
+  }
+
   drawShip(ctx, ship, pos, now) {
     if (!pos) return;
     const { x, y } = pos;
-    const scale = ship.extinct ? 0.7 : 1;
+    const tierScale = ship.tier === 2 ? 1.35 : ship.tier === 1 ? 1.15 : 1;
+    const scale = (ship.extinct ? 0.7 : 1) * tierScale;
     const color = PLANET_COLOR[ship.name] || "#ffd400";
     const twoEyes = hashPlanet(ship.name) % 2 === 0;
 
@@ -567,6 +711,27 @@ export class SwarmSim {
     const bob = Math.sin(now * 0.0015 + x) * 3;
     ctx.translate(0, bob);
     ctx.scale(scale, scale);
+
+    // tier aura — a promoted lineage visibly outgrows the rest
+    if (ship.tier > 0 && !ship.extinct) {
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.004 + x);
+      const auraColor = ship.tier === 2 ? "255,140,40" : "255,212,0";
+      ctx.beginPath();
+      ctx.arc(0, 0, 30 + pulse * 6, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(${auraColor},${0.45 + pulse * 0.3})`;
+      ctx.lineWidth = ship.tier === 2 ? 3 : 2;
+      ctx.shadowColor = `rgba(${auraColor},0.9)`;
+      ctx.shadowBlur = 12;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      if (ship.tier === 2) {
+        ctx.beginPath();
+        ctx.arc(0, 0, 44 + pulse * 9, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,80,60,${0.25 + pulse * 0.25})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
 
     // thinking pulse ring
     if (ship.thinking) {
@@ -607,9 +772,19 @@ export class SwarmSim {
     ctx.shadowBlur = 3;
     ctx.fillText(ship.name, 0, 50);
     ctx.shadowBlur = 0;
+    let subLabelY = 63;
+    if (ship.tier > 0 && !ship.extinct) {
+      ctx.font = "9px monospace";
+      ctx.fillStyle = ship.tier === 2 ? "#ff9d3b" : "#ffd400";
+      ctx.shadowColor = "#000";
+      ctx.shadowBlur = 3;
+      ctx.fillText(ship.tier === 2 ? "★ UBER UBER MINION ★" : "★ UBER MINION ★", 0, subLabelY);
+      ctx.shadowBlur = 0;
+      subLabelY += 13;
+    }
     if (ship.contestedNiche) {
       ctx.fillStyle = "#ff3b4a";
-      ctx.fillText("⚔ contested", 0, 63);
+      ctx.fillText("⚔ contested", 0, subLabelY);
     }
 
     // hazard forecast icon (fog of war — type only)
@@ -669,15 +844,40 @@ export class SwarmSim {
       const hx = lerp(from.x, to.x, head);
       const hy = lerp(from.y, to.y, head);
       ctx.save();
-      ctx.strokeStyle = `rgba(255,120,50,${0.9 * (1 - t)})`;
-      ctx.lineWidth = 3;
-      ctx.shadowColor = "#ff7832";
-      ctx.shadowBlur = 10;
+      const color = e.consume ? "255,60,40" : "255,120,50";
+      ctx.strokeStyle = `rgba(${color},${0.9 * (1 - t)})`;
+      ctx.lineWidth = e.consume ? 5 : 3;
+      ctx.shadowColor = e.consume ? "#ff3c28" : "#ff7832";
+      ctx.shadowBlur = e.consume ? 18 : 10;
       ctx.setLineDash([8, 6]);
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(hx, hy);
       ctx.stroke();
+      ctx.restore();
+    } else if (e.type === "promotion_burst") {
+      const p = this.posOf(e.planet);
+      if (!p) return;
+      ctx.save();
+      // expanding golden shockwave ring
+      const ringT = easeOut(Math.min(1, t * 1.3));
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 10 + ringT * 90, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,212,0,${0.8 * (1 - t)})`;
+      ctx.lineWidth = 4;
+      ctx.shadowColor = "#ffd400";
+      ctx.shadowBlur = 20;
+      ctx.stroke();
+      // radiant burst of particles
+      ctx.globalAlpha = 1 - t;
+      for (let i = 0; i < 18; i++) {
+        const ang = (i / 18) * Math.PI * 2 + t * 2;
+        const dist = 14 + easeOut(t) * 60;
+        ctx.beginPath();
+        ctx.fillStyle = i % 2 ? "#ffd400" : "#fff2b3";
+        ctx.arc(p.x + Math.cos(ang) * dist, p.y + Math.sin(ang) * dist, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     } else if (e.type === "annihilate_beam") {
       const p = this.posOf(e.planet);
