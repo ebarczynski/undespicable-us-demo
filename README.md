@@ -1,6 +1,6 @@
 # Gru's Minion Swarm — Intergalactic Command
 
-**One-page project summary (architecture, parallelism proof, cost breakdown):** [`public/summary.html`](public/summary.html) — open directly, or visit `/summary.html` while the server is running.
+**One-page project summary (architecture, parallelism proof, cost breakdown):** [`docs/index.html`](docs/index.html) — open directly, or once GitHub Pages is enabled (Settings → Pages → source: `main` branch, `/docs` folder), it's live at `https://ebarczynski.github.io/undespicable-us-demo/`.
 
 A visual multi-agent simulation of `solar-system-evolution-ruleset.md`. Gru (coordinator)
 commands from his flagship; one Minion pilot-agent per planet reports back each epoch.
