@@ -1,0 +1,20 @@
+{
+  "name": "gru-minion-swarm",
+  "version": "1.0.0",
+  "description": "Minion swarm space simulation — Gru coordinates specialist Minion agents to run the Solar System Evolution ruleset",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test:fanout": "node scripts/test-fanout.js",
+    "test:epoch": "node scripts/test-epoch.js",
+    "test:reset-race": "node scripts/test-reset-race.js",
+    "test:sim-logic": "node scripts/test-sim-logic.js",
+    "eval": "node scripts/eval.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}

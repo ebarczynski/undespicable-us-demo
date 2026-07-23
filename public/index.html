@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gru's Minion Swarm — Intergalactic Command</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="bg-image"></div>
+  <canvas id="scene"></canvas>
+
+  <div id="ui">
+    <header id="topbar">
+      <div class="brand">
+        <span class="brand-gru">GRU</span><span class="brand-sep">//</span><span class="brand-title">MINION SWARM COMMAND</span>
+      </div>
+      <div id="epoch-readout">
+        <span class="label">EPOCH</span><span id="epoch-num">0</span>
+        <span class="label">MULT</span><span id="epoch-mult">1.00×</span>
+      </div>
+      <div id="controls">
+        <button id="btn-start" class="btn btn-go">▶ START</button>
+        <button id="btn-stop" class="btn">■ STOP</button>
+        <button id="btn-step" class="btn">⏭ STEP</button>
+        <button id="btn-speed" class="btn">⏩ SPEED 1×</button>
+        <button id="btn-reset" class="btn btn-danger">⟲ RESET</button>
+      </div>
+    </header>
+
+    <div id="dominion-panel" class="panel">
+      <div class="dominion-label">GRU'S GALACTIC DOMINION <span id="dominion-text">0 / 12000</span></div>
+      <div class="dominion-track"><div id="dominion-fill" class="dominion-fill"></div></div>
+    </div>
+
+    <aside id="leaderboard-panel" class="panel">
+      <h2>Cosmic Adaptation Index</h2>
+      <table id="leaderboard"><tbody></tbody></table>
+    </aside>
+
+    <aside id="log-panel" class="panel">
+      <h2>Comm Channel</h2>
+      <div id="log"></div>
+    </aside>
+
+    <aside id="usage-panel" class="panel">
+      <h2>Token Usage &amp; Cost <span class="usage-model-tag">claude-haiku-4-5</span></h2>
+      <table id="usage-table">
+        <thead>
+          <tr><td></td><td>calls</td><td>in</td><td>out</td><td>cache r/w</td></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Gru</td>
+            <td id="u-coord-calls">0</td>
+            <td id="u-coord-in">0</td>
+            <td id="u-coord-out">0</td>
+            <td id="u-coord-cache">0/0</td>
+          </tr>
+          <tr>
+            <td>Minions</td>
+            <td id="u-spec-calls">0</td>
+            <td id="u-spec-in">0</td>
+            <td id="u-spec-out">0</td>
+            <td id="u-spec-cache">0/0</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="usage-total">TOTAL <span id="u-total-cost">$0.000000</span> <span id="u-total-calls" class="usage-dim"></span></div>
+    </aside>
+
+    <div id="funmode-hint">Type <kbd>G</kbd><kbd>R</kbd><kbd>U</kbd> to scramble a fighter — dodge Gru's wrath</div>
+  </div>
+
+  <div id="funmode-overlay" class="hidden">
+    <div id="funmode-hud">
+      <div>SCORE <span id="fm-score">0</span></div>
+      <div>LIVES <span id="fm-lives">3</span></div>
+      <div id="fm-tip">ARROWS / WASD move · SPACE fire · ESC or G-R-U to return to command</div>
+    </div>
+    <div id="funmode-gameover" class="hidden">
+      <h1>SHIP LOST</h1>
+      <p>Final score: <span id="fm-final-score">0</span></p>
+      <p class="tip">Press SPACE to fly again — ESC or G-R-U for Command view</p>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

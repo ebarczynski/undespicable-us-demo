@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gru's Minion Swarm — Project Summary</title>
+<style>
+  :root {
+    --bg: #04040a;
+    --panel: #0a0a16;
+    --banana: #ffd400;
+    --gru-purple: #9d8cff;
+    --gru-purple-dim: #3a2260;
+    --laser-red: #ff5a68;
+    --ok-green: #3bff9e;
+    --ink: #e8e6ff;
+    --ink-dim: #9d97c0;
+    --border: rgba(255, 212, 0, 0.2);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 24px 80px; }
+
+  header.hero {
+    position: relative;
+    padding: 70px 24px 50px;
+    text-align: center;
+    background: linear-gradient(to bottom, rgba(4,4,10,0.55), rgba(4,4,10,0.92) 80%), url("assets/nebula-bg.png") center 30% / cover no-repeat;
+    border-bottom: 1px solid var(--border);
+  }
+  header.hero h1 {
+    margin: 0;
+    font-size: 34px;
+    letter-spacing: 1px;
+    color: var(--banana);
+    text-shadow: 0 0 20px rgba(255,212,0,0.5);
+  }
+  header.hero .tagline {
+    margin-top: 10px;
+    color: var(--ink);
+    font-size: 15px;
+    max-width: 620px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  header.hero .meta {
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--ink-dim);
+    letter-spacing: 1px;
+  }
+
+  h2.section {
+    font-size: 13px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--banana);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin: 56px 0 20px;
+  }
+  h2.section .n { color: var(--ink-dim); margin-right: 10px; }
+
+  p { color: #cfcbf0; }
+  strong { color: var(--ink); }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 3px; font-size: 0.92em; }
+  a { color: var(--gru-purple); }
+
+  .callout {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--banana);
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin: 18px 0;
+    font-size: 14px;
+  }
+  .callout.green { border-left-color: var(--ok-green); }
+  .callout.red { border-left-color: var(--laser-red); }
+  .callout.purple { border-left-color: var(--gru-purple); }
+
+  /* ---- architecture diagram ---- */
+  .diagram {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    margin: 24px 0;
+  }
+  .diagram-row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  .box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12.5px;
+    text-align: center;
+    min-width: 150px;
+  }
+  .box .box-title { color: var(--banana); font-weight: 700; display: block; margin-bottom: 3px; }
+  .box.claude { border-color: rgba(157,140,255,0.5); }
+  .box.claude .box-title { color: var(--gru-purple); }
+  .arrow-down { color: var(--ink-dim); font-size: 18px; }
+  .arrow-right { color: var(--ink-dim); font-size: 16px; padding: 0 4px; }
+  .fanout-note {
+    font-size: 11.5px;
+    color: var(--ink-dim);
+    text-align: center;
+    max-width: 480px;
+  }
+
+  /* ---- stat tiles ---- */
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }
+  .tile {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .tile .label { font-size: 10px; letter-spacing: 1px; color: var(--ink-dim); text-transform: uppercase; }
+  .tile .value { font-size: 22px; color: var(--ok-green); margin-top: 4px; text-shadow: 0 0 10px rgba(59,255,158,0.35); }
+  .tile .sub { font-size: 11px; color: var(--ink-dim); margin-top: 2px; }
+
+  /* ---- cost bars (identity colors match the app's own beam colors) ---- */
+  .bar-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; font-size: 12.5px; }
+  .bar-label { width: 130px; flex-shrink: 0; }
+  .bar-track { flex: 1; height: 14px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; }
+  .bar-fill.coord { background: var(--gru-purple); }
+  .bar-fill.spec { background: var(--banana); }
+  .bar-value { width: 90px; text-align: right; flex-shrink: 0; color: var(--ink); }
+
+  table.data { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 14px 0; }
+  table.data th, table.data td { padding: 6px 8px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  table.data th:first-child, table.data td:first-child { text-align: left; }
+  table.data th { color: var(--ink-dim); font-size: 10.5px; letter-spacing: 1px; text-transform: uppercase; }
+
+  ul.check, ul.warn { list-style: none; padding: 0; margin: 14px 0; }
+  ul.check li, ul.warn li { padding: 5px 0 5px 26px; position: relative; font-size: 13.5px; color: #cfcbf0; }
+  ul.check li::before { content: "✅"; position: absolute; left: 0; }
+  ul.warn li::before { content: "⚠"; position: absolute; left: 0; color: var(--laser-red); }
+
+  .filemap { font-size: 12.5px; color: #cfcbf0; }
+  .filemap .path { color: var(--banana); }
+  .filemap .dim { color: var(--ink-dim); }
+
+  footer { text-align: center; padding: 40px 0; color: var(--ink-dim); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>GRU'S MINION SWARM</h1>
+  <div class="tagline">
+    A Claude-powered multi-agent swarm, themed as the Minions under Imperator Gru,
+    running <code>solar-system-evolution-ruleset.md</code> live — with a playable
+    Asteroids-style side mode when you'd rather fly than watch.
+  </div>
+  <div class="meta">PROJECT SUMMARY — 2026-07-23</div>
+</header>
+
+<div class="wrap">
+
+  <h2 class="section"><span class="n">01</span>What this is</h2>
+  <p>
+    Eight Claude agents, one per planet, each independently deciding how to survive its
+    own hazard forecast every epoch — under fog of war (they're told the hazard <em>type</em>,
+    never its severity). A ninth agent, Gru, coordinates the fleet: every epoch he
+    delegates to all eight living garrisons <strong>in a single message</strong>, and all
+    eight decisions run as genuinely concurrent Claude calls. The theme (Minions, X-Wings,
+    Gru's flagship, a playable dodge-the-death-ray minigame) sits on top of a real
+    multi-agent system — not the other way around.
+  </p>
+  <p>
+    The engine (<code>engine.js</code>) is deterministic and owns every hazard roll and
+    resolution formula; the agents (<code>agents.js</code>) never see a rolled severity,
+    only the forecasted type — the ruleset's "fog of war" premise, enforced in code, not
+    just in the prompt.
+  </p>
+
+  <h2 class="section"><span class="n">02</span>Architecture</h2>
+  <div class="diagram">
+    <div class="box">Browser — canvas UI<br /><span class="box-title">public/js/*.js</span></div>
+    <div class="arrow-down">↕ WebSocket</div>
+    <div class="box">server.js<br /><span class="box-title">Express + WS, epoch loop, usage ledger</span></div>
+    <div class="arrow-down">↓</div>
+    <div class="diagram-row">
+      <div class="box">engine.js<br /><span class="box-title">deterministic ruleset</span></div>
+      <div class="arrow-right">+</div>
+      <div class="box claude">agents.js<br /><span class="box-title">Gru + 8 Minions</span></div>
+    </div>
+    <div class="arrow-down">↓</div>
+    <div class="box claude">Anthropic API — claude-haiku-4-5</div>
+  </div>
+  <p class="fanout-note" style="margin: 0 auto; text-align:center;">
+    <code>engine.js</code> owns every hazard roll and resolution formula and never calls Claude.
+    <code>agents.js</code> is the only file that talks to the model.
+  </p>
+
+  <h2 class="section"><span class="n">03</span>The parallelism story</h2>
+  <p>
+    Gru's system prompt instructs him to delegate to every living garrison
+    <strong>in one turn</strong> — one <code>tool_use</code> block per planet, forced with
+    <code>tool_choice:"any"</code> so he can't just write prose instead. The server then
+    executes every dispatched specialist call with <code>Promise.all</code>, not a loop with
+    <code>await</code> inside. Measured on a real run:
+  </p>
+  <div class="callout purple">
+    <strong>Gru → 8 garrisons:</strong> all 8 <code>tool_use</code> blocks arrive in a single
+    coordinator response — <strong>0-1ms</strong> spread between the first and last
+    <code>specialist_start</code> event.<br />
+    <strong>8 specialists → Gru:</strong> wall-clock for all 8 parallel Haiku calls was
+    <strong>~1.9s</strong> in one measured run; the sum of their individual latencies was
+    <strong>~13s</strong> — an <strong>~6-7x</strong> speedup from real concurrency, not an
+    illusion of it.
+  </div>
+  <p>
+    This is checked by a standing regression script, not just eyeballed once:
+    <code>npm run test:fanout</code> asserts the start-spread and the wall-clock-vs-serial-sum
+    ratio on every run.
+  </p>
+
+  <h2 class="section"><span class="n">04</span>Mechanics: cooperate <em>and</em> compete</h2>
+  <p>
+    Each Minion sees the full rival roster (population and CAI rank) and Gru's shared
+    <strong>Dominion meter</strong> (the fleet's combined population) every epoch, and is
+    explicitly framed with a dual objective: climb the individual leaderboard, but don't be
+    the reason the fleet's shared score collapses. They can also spend 3 AP to
+    <strong>raid</strong> a named rival — offense (<code>(STR+MOB)/2</code>) versus the
+    target's defense (<code>STR</code>) decides how much population actually transfers.
+  </p>
+  <div class="callout">
+    This produces genuine emergent behavior, not scripted outcomes. In testing, Mercury and
+    Venus independently raided <em>each other</em> in the same epoch — resolved correctly
+    because raids snapshot pre-epoch stats before any transfer applies, so simultaneous
+    raids don't depend on iteration order. In another run, Saturn and Uranus both raided
+    Earth independently in the same turn.
+  </div>
+  <p>
+    On the visual side: the Dominion meter isn't decorative — a real swing in it (growth or
+    a setback) shakes the scene, and the fleet's on-screen formation radius eases outward as
+    Dominion climbs toward its target, so the galaxy visibly expands as the conquest grows.
+  </p>
+
+  <h2 class="section"><span class="n">05</span>Safety &amp; verification</h2>
+  <p>
+    <code>engine.sanitizeAction()</code> is the one place untrusted model output meets the
+    deterministic engine — it never trusts the LLM's arithmetic. A regression suite
+    (<code>npm run eval</code>) gates every change to <code>engine.js</code> or
+    <code>agents.js</code>:
+  </p>
+  <ul class="check">
+    <li>11/11 checks passing — 8 capability, 3 regression</li>
+    <li>CRITICAL-severity: AP overspend is clamped, negative-invest can't manufacture free AP, raids can't target self or an unknown planet</li>
+    <li>MEDIUM-severity: null/non-numeric/garbage action payloads never throw</li>
+  </ul>
+  <div class="callout red">
+    <strong>A real bug, found and fixed:</strong> clicking RESET while an epoch was
+    mid-flight swapped in a brand-new engine instance; the in-flight epoch then tried to
+    resolve against it — a fresh engine that never had <code>beginEpoch()</code> called on
+    it, so the crash was <code>Cannot read properties of undefined (reading 'get')</code>.
+    Fixed with a <code>generation</code> counter bumped on reset, checked before every
+    broadcast — a stale epoch's events (including in-flight <code>specialist_done</code>
+    events already en route) are now silently discarded instead of corrupting state. The fix
+    shipped with both a permanent regression test and a reproduction script
+    (<code>npm run test:reset-race</code>) that fires the exact race on demand.
+  </div>
+
+  <h2 class="section"><span class="n">06</span>Token usage &amp; cost</h2>
+  <p>
+    Model tier: <strong>claude-haiku-4-5</strong> throughout, for both Gru and the eight
+    Minions — this is simple structured routing and extraction (dispatch decisions, epoch
+    actions), not complex reasoning or the final user-facing output, so Haiku is the right
+    tier per the standard model-selection decision rule. Real numbers from one full epoch
+    (1 coordinator call + 8 specialist calls):
+  </p>
+  <div class="tiles">
+    <div class="tile"><div class="label">Cost / epoch</div><div class="value">$0.0233</div><div class="sub">9 Claude calls</div></div>
+    <div class="tile"><div class="label">Input tokens</div><div class="value">14,898</div><div class="sub">1 coordinator + 8 specialists</div></div>
+    <div class="tile"><div class="label">Output tokens</div><div class="value">1,677</div><div class="sub">structured tool-call output</div></div>
+    <div class="tile"><div class="label">Wall clock</div><div class="value">~5.8s</div><div class="sub">~3.9s dispatch + ~1.9s parallel</div></div>
+  </div>
+
+  <table class="data">
+    <thead><tr><th>Source</th><th>Calls</th><th>Input tok</th><th>Output tok</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td>Gru (coordinator)</td><td>1</td><td>852</td><td>510</td><td>$0.0034</td></tr>
+      <tr><td>Minions (8 specialists)</td><td>8</td><td>14,046</td><td>1,167</td><td>$0.0199</td></tr>
+      <tr><td><strong>Total</strong></td><td><strong>9</strong></td><td><strong>14,898</strong></td><td><strong>1,677</strong></td><td><strong>$0.0233</strong></td></tr>
+    </tbody>
+  </table>
+
+  <div class="bar-row">
+    <div class="bar-label">Gru (coordinator)</div>
+    <div class="bar-track"><div class="bar-fill coord" style="width: 15%"></div></div>
+    <div class="bar-value">$0.0034</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Minions (×8)</div>
+    <div class="bar-track"><div class="bar-fill spec" style="width: 85%"></div></div>
+    <div class="bar-value">$0.0199</div>
+  </div>
+
+  <p style="font-size: 12px; color: var(--ink-dim);">
+    Pricing: Haiku 4.5 is $1.00 / $5.00 per million input/output tokens. Extrapolated, a
+    full 100-epoch "Horizon run" (per the ruleset's own end condition) costs on the order of
+    <strong>$2.30</strong> in inference — cheap enough to run the whole simulation many times
+    over while iterating.
+  </p>
+  <div class="callout">
+    <strong>Cache read/write is 0 tokens, on purpose (verified, not a bug):</strong> the
+    shared specialist system prompt is marked <code>cache_control: ephemeral</code> because
+    it's byte-identical across all 8 calls and every epoch — but Haiku 4.5's minimum
+    cacheable prefix is <strong>4,096 tokens</strong>, and that prompt is only ~380 tokens.
+    Below the minimum, the cache marker is a documented no-op: no error, just
+    <code>cache_creation_input_tokens: 0</code> forever. A bigger shared context (e.g. the
+    full ruleset text embedded verbatim) would cross the threshold and unlock the real
+    ~90% cost reduction prompt caching is capable of.
+  </div>
+
+  <h2 class="section"><span class="n">07</span>Fun Mode</h2>
+  <p>
+    Type <strong>G</strong>, <strong>R</strong>, <strong>U</strong> in sequence anywhere on
+    the page to scramble into an Asteroids-style dodge game: steer with arrows/WASD, fire
+    with Space, dodge Gru's telegraphed wrath-ray sweeps, shoot asteroids for score. The main
+    simulation keeps running server-side the entire time you're away — flipping back to
+    Command view shows wherever the epoch loop got to.
+  </p>
+
+  <h2 class="section"><span class="n">08</span>Tech stack &amp; file map</h2>
+  <div class="filemap">
+    <p><strong>Backend:</strong> Node.js, Express, <code>ws</code>, <code>@anthropic-ai/sdk</code> — no framework, no build step.</p>
+    <p><strong>Frontend:</strong> vanilla JS + Canvas 2D, no bundler, no framework.</p>
+    <ul>
+      <li><span class="path">engine.js</span> <span class="dim">— deterministic ruleset engine (491 lines)</span></li>
+      <li><span class="path">agents.js</span> <span class="dim">— Gru + 8 Minion Claude calls (247 lines)</span></li>
+      <li><span class="path">server.js</span> <span class="dim">— Express + WebSocket, epoch loop, usage ledger (155 lines)</span></li>
+      <li><span class="path">lib/usage.js</span>, <span class="path">lib/env.js</span> <span class="dim">— pricing math, .env loader</span></li>
+      <li><span class="path">public/js/sim.js</span> <span class="dim">— canvas renderer for the space scene (918 lines)</span></li>
+      <li><span class="path">public/js/funmode.js</span> <span class="dim">— the Asteroids minigame (438 lines)</span></li>
+      <li><span class="path">scripts/*.js</span> <span class="dim">— fanout proof, epoch smoke test, reset-race reproduction, eval harness</span></li>
+    </ul>
+  </div>
+
+  <h2 class="section"><span class="n">09</span>Honest limitations</h2>
+  <ul class="warn">
+    <li>Every visual claim in this project (Minion art, Gru's portrait compositing, screen shake, drag-and-drop feel) was verified by a human, not by the agent that built it — there's no browser tool in this build loop.</li>
+    <li>Prompt caching is configured correctly but currently inert (see §06) — it's a real lever, not yet a real saving, at this prompt size.</li>
+    <li>Fixed roster of 8 planets, matching the ruleset's suggested set — moons/dwarf planets are a documented expansion path in the ruleset, not implemented here.</li>
+    <li>Speed control (1×/2×/4×) only shortens the pause between epochs — Claude API latency for the coordinator + parallel specialists (~2-6s/epoch) is the real floor either way.</li>
+  </ul>
+
+</div>
+
+<footer>Gru's Minion Swarm — built on the Claude API (claude-haiku-4-5) — see README.md for how to run it.</footer>
+
+</body>
+</html>
